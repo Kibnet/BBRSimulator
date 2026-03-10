@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Dark industrial theme */
+    --background: 225 30% 5%;
+    --foreground: 210 14% 90%;
+    --card: 225 22% 8%;
+    --card-foreground: 210 14% 90%;
+    --popover: 225 22% 8%;
+    --popover-foreground: 210 14% 90%;
+    --primary: 187 72% 50%;
+    --primary-foreground: 225 30% 5%;
+    --secondary: 220 16% 13%;
+    --secondary-foreground: 210 14% 78%;
+    --muted: 220 16% 11%;
+    --muted-foreground: 215 10% 46%;
+    --accent: 220 16% 15%;
+    --accent-foreground: 210 14% 90%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 220 14% 14%;
+    --input: 220 14% 14%;
+    --ring: 187 72% 50%;
+    --radius: 0.75rem;
+
+    /* Buffer zone semantic tokens */
+    --buffer-green: 142 71% 45%;
+    --buffer-yellow: 45 93% 47%;
+    --buffer-red: 0 72% 51%;
+
+    /* Glow effects */
+    --glow-primary: 0 0 24px hsl(187 72% 50% / 0.12);
+    --glow-red: 0 0 20px hsl(0 72% 51% / 0.18);
+    --glow-green: 0 0 16px hsl(142 71% 45% / 0.12);
+    --shadow-card: 0 4px 24px -4px hsl(225 30% 2% / 0.6);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer utilities {
+  /* Card shadow */
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Glow effects for buffer states */
+  .glow-primary {
+    box-shadow: var(--glow-primary);
+  }
+  .glow-red {
+    box-shadow: var(--glow-red);
+  }
+  .glow-green {
+    box-shadow: var(--glow-green);
+  }
+
+  /* Scrollbar styling */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 2px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+
+  /* Dot grid background pattern */
+  .bg-dot-grid {
+    background-image: radial-gradient(
+      circle at 1px 1px,
+      hsl(var(--border) / 0.35) 1px,
+      transparent 0
+    );
+    background-size: 32px 32px;
+  }
+}
