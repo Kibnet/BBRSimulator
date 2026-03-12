@@ -1,10 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { useSimulator } from './useSimulator';
 import { NodeCard } from './NodeCard';
 import { EventLog } from './EventLog';
+import { SettingsPanel } from './SettingsPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { SimConfig } from './types';
 import {
   Play,
   Pause,
@@ -13,10 +16,18 @@ import {
   TrendingUp,
   Info,
   ChevronRight,
+  Settings,
 } from 'lucide-react';
+import Link from 'next/link';
 
 export function Simulator() {
-  const { state, toggleRunning, reset, setSpeed } = useSimulator();
+  const { state, toggleRunning, reset, setSpeed, config } = useSimulator();
+  const [showSettings, setShowSettings] = useState(false);
+
+  const handleApplyConfig = (newConfig: SimConfig) => {
+    reset(newConfig);
+    setShowSettings(false);
+  };
 
   const supplier = state.nodes.find((n) => n.type === 'supplier')!;
   const warehouse = state.nodes.find((n) => n.type === 'warehouse')!;
@@ -29,7 +40,7 @@ export function Simulator() {
 
   const ordersToWarehouse = state.orders.filter(
     (o) => o.toId === 'warehouse'
-  ).length;
+  ).length + state.productionQueue.length;
   const ordersFromWarehouse = state.orders.filter(
     (o) => o.fromId === 'warehouse'
   ).length;
@@ -50,9 +61,17 @@ export function Simulator() {
             <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
               Барабан–Буфер–Канат
             </h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Симулятор управления запасами · Теория ограничений
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-muted-foreground text-sm">
+                Симулятор управления запасами · Теория ограничений
+              </p>
+              <Link
+                href="/production"
+                className="text-[10px] text-primary bg-primary/10 border border-primary/20 rounded-full px-2.5 py-1 hover:bg-primary/20 transition-colors"
+              >
+                Производство →
+              </Link>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -103,9 +122,15 @@ export function Simulator() {
             </Button>
 
             {/* Reset */}
-            <Button onClick={reset} variant="outline">
+            <Button onClick={() => reset()} variant="outline">
               <RotateCcw className="w-4 h-4 mr-2" />
               Сброс
+            </Button>
+
+            {/* Settings */}
+            <Button onClick={() => setShowSettings(true)} variant="outline">
+              <Settings className="w-4 h-4 mr-2" />
+              Параметры
             </Button>
           </div>
         </header>
@@ -115,12 +140,12 @@ export function Simulator() {
           <div className="flex flex-col lg:flex-row items-stretch gap-4">
             {/* Supplier */}
             <div className="lg:w-52 flex-shrink-0">
-              <NodeCard node={supplier} orders={state.orders} />
+              <NodeCard node={supplier} orders={state.orders} productionQueue={state.productionQueue} />
             </div>
 
             {/* Connection: Supplier → Warehouse */}
             <ConnectionArrow
-              label={`${warehouse.leadTime} дн.`}
+              label={`${supplier.productionLeadTime || 3}+${warehouse.leadTime} дн.`}
               activeCount={ordersToWarehouse}
             />
 
@@ -225,6 +250,16 @@ export function Simulator() {
           <EventLog log={state.log} />
         </section>
       </div>
+
+      {/* Settings modal */}
+      {showSettings && (
+        <SettingsPanel
+          currentConfig={config}
+          isRunning={state.isRunning}
+          onApply={handleApplyConfig}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </div>
   );
 }

@@ -1,72 +1,53 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { SimState, SimNode, Order, LogEntry } from './types';
-import { getBufferZone, getZoneLabel } from './types';
+import type { SimState, SimNode, Order, LogEntry, ProductionOrder, SimConfig } from './types';
+import { getBufferZone, getZoneLabel, DEFAULT_CONFIG } from './types';
 
-/* ── Initial Configuration ── */
+/* ── Build nodes from config ── */
 
-const createInitialNodes = (): SimNode[] => [
+const createNodesFromConfig = (config: SimConfig): SimNode[] => [
   {
     id: 'supplier',
-    name: 'Поставщик',
+    name: 'Производство',
     type: 'supplier',
-    bufferMax: Infinity,
-    bufferCurrent: Infinity,
+    bufferMax: 0,
+    bufferCurrent: 0,
     avgDemand: 0,
     demandStdev: 0,
     supplierId: null,
     leadTime: 0,
+    productionLeadTime: config.supplier.productionLeadTime,
+    productionCapacity: config.supplier.productionCapacity,
   },
   {
     id: 'warehouse',
     name: 'Центральный склад',
     type: 'warehouse',
-    bufferMax: 300,
-    bufferCurrent: 300,
+    bufferMax: config.warehouse.bufferMax,
+    bufferCurrent: config.warehouse.bufferMax,
     avgDemand: 0,
     demandStdev: 0,
     supplierId: 'supplier',
-    leadTime: 5,
+    leadTime: config.warehouse.leadTime,
   },
-  {
-    id: 'retail-alpha',
-    name: 'Магазин «Альфа»',
-    type: 'retail',
-    bufferMax: 100,
-    bufferCurrent: 100,
-    avgDemand: 10,
-    demandStdev: 3,
+  ...config.retailers.map((r) => ({
+    id: r.id,
+    name: r.name,
+    type: 'retail' as const,
+    bufferMax: r.bufferMax,
+    bufferCurrent: r.bufferMax,
+    avgDemand: r.avgDemand,
+    demandStdev: r.demandStdev,
     supplierId: 'warehouse',
-    leadTime: 2,
-  },
-  {
-    id: 'retail-beta',
-    name: 'Магазин «Бета»',
-    type: 'retail',
-    bufferMax: 80,
-    bufferCurrent: 80,
-    avgDemand: 8,
-    demandStdev: 2.5,
-    supplierId: 'warehouse',
-    leadTime: 2,
-  },
-  {
-    id: 'retail-gamma',
-    name: 'Магазин «Гамма»',
-    type: 'retail',
-    bufferMax: 60,
-    bufferCurrent: 60,
-    avgDemand: 6,
-    demandStdev: 2,
-    supplierId: 'warehouse',
-    leadTime: 3,
-  },
+    leadTime: r.leadTime,
+  })),
 ];
 
-const createInitialState = (): SimState => ({
-  nodes: createInitialNodes(),
+const createInitialState = (config: SimConfig): SimState => ({
+  nodes: createNodesFromConfig(config),
   orders: [],
+  productionQueue: [],
   day: 0,
   isRunning: false,
   speed: 800,
@@ -91,11 +72,13 @@ function gaussianRandom(mean: number, stdev: number): number {
 
 let _nextOrderId = 0;
 let _nextLogId = 0;
+let _nextProdId = 0;
 
 /* ── Hook ── */
 
 export function useSimulator() {
-  const [state, setState] = useState<SimState>(createInitialState);
+  const configRef = useRef<SimConfig>(DEFAULT_CONFIG);
+  const [state, setState] = useState<SimState>(() => createInitialState(DEFAULT_CONFIG));
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const tick = useCallback(() => {
@@ -103,6 +86,7 @@ export function useSimulator() {
       const newDay = prev.day + 1;
       const nodes = prev.nodes.map((n) => ({ ...n }));
       let orders = prev.orders.map((o) => ({ ...o }));
+      let prodQueue = prev.productionQueue.map((p) => ({ ...p }));
       const newLog: LogEntry[] = [];
       const stats = { ...prev.stats };
 
@@ -142,11 +126,11 @@ export function useSimulator() {
         order.daysRemaining--;
       }
 
-      /* ── Step 3: Deliver completed orders ── */
+      /* ── Step 3: Deliver completed shipping orders ── */
       const completed = orders.filter((o) => o.daysRemaining <= 0);
       for (const order of completed) {
         const dest = findNode(order.toId);
-        if (dest && isFinite(dest.bufferMax)) {
+        if (dest && isFinite(dest.bufferMax) && dest.bufferMax > 0) {
           const space = dest.bufferMax - dest.bufferCurrent;
           const delivered = Math.min(order.quantity, space);
           dest.bufferCurrent += delivered;
@@ -161,7 +145,37 @@ export function useSimulator() {
       }
       orders = orders.filter((o) => o.daysRemaining > 0);
 
-      /* ── Step 4: DBR Replenishment — The Rope ── */
+      /* ── Step 4: Advance production queue & complete ── */
+      for (const prod of prodQueue) {
+        prod.daysRemaining--;
+      }
+      const completedProd = prodQueue.filter((p) => p.daysRemaining <= 0);
+      for (const prod of completedProd) {
+        const targetNode = findNode(prod.targetNodeId);
+        if (targetNode) {
+          // Production complete → create shipping order
+          const shippingOrder: Order = {
+            id: `order-${++_nextOrderId}`,
+            quantity: prod.quantity,
+            fromId: 'supplier',
+            toId: prod.targetNodeId,
+            daysRemaining: targetNode.leadTime,
+            totalDays: targetNode.leadTime,
+            createdDay: newDay,
+          };
+          orders.push(shippingOrder);
+
+          newLog.push({
+            id: `log-${++_nextLogId}`,
+            day: newDay,
+            message: `🏭 Произведено ${prod.quantity} ед. → отгрузка в ${targetNode.name}`,
+            type: 'delivery',
+          });
+        }
+      }
+      prodQueue = prodQueue.filter((p) => p.daysRemaining > 0);
+
+      /* ── Step 5: DBR Replenishment — The Rope ── */
       for (const node of nodes) {
         if (node.type === 'supplier' || !node.supplierId) continue;
 
@@ -170,45 +184,73 @@ export function useSimulator() {
 
         const zone = getBufferZone(node.bufferCurrent, node.bufferMax);
 
-        // Calculate pending incoming quantity
-        const pendingIncoming = orders
+        // Calculate pending incoming (shipping orders + production orders destined here)
+        const pendingShipping = orders
           .filter((o) => o.toId === node.id)
           .reduce((sum, o) => sum + o.quantity, 0);
 
-        const effectiveStock = node.bufferCurrent + pendingIncoming;
+        const pendingProduction = prodQueue
+          .filter((p) => p.targetNodeId === node.id)
+          .reduce((sum, p) => sum + p.quantity, 0);
+
+        const effectiveStock = node.bufferCurrent + pendingShipping + pendingProduction;
 
         // Place order when buffer penetrates below green zone top (67%)
-        // and effective stock is below 80% of max
         if (effectiveStock < node.bufferMax * 0.67) {
           const orderQty = Math.round(node.bufferMax - effectiveStock);
 
           if (orderQty > 0) {
-            // Deduct from supplier stock (infinite for external supplier)
-            let actualQty = orderQty;
-            if (isFinite(supplier.bufferCurrent)) {
-              actualQty = Math.min(orderQty, supplier.bufferCurrent);
-              supplier.bufferCurrent -= actualQty;
-            }
-
-            if (actualQty > 0) {
-              const order: Order = {
-                id: `order-${++_nextOrderId}`,
-                quantity: actualQty,
-                fromId: supplier.id,
-                toId: node.id,
-                daysRemaining: node.leadTime,
-                totalDays: node.leadTime,
+            if (supplier.type === 'supplier') {
+              // Make-to-order: create production order
+              // Duration depends on capacity (Drum) — large orders take longer
+              const prodLeadTime = supplier.productionLeadTime || 3;
+              const prodCapacity = supplier.productionCapacity || 35;
+              const productionDays = Math.max(prodLeadTime, Math.ceil(orderQty / prodCapacity));
+              const prodOrder: ProductionOrder = {
+                id: `prod-${++_nextProdId}`,
+                quantity: orderQty,
+                daysRemaining: productionDays,
+                totalDays: productionDays,
+                targetNodeId: node.id,
                 createdDay: newDay,
               };
-              orders.push(order);
+              prodQueue.push(prodOrder);
               stats.ordersPlaced++;
 
               newLog.push({
                 id: `log-${++_nextLogId}`,
                 day: newDay,
-                message: `🔗 Канат: ${node.name} ← заказ ${actualQty} ед. (${getZoneLabel(zone)})`,
+                message: `🔗 Канат: ${node.name} ← производство ${orderQty} ед. (${getZoneLabel(zone)})`,
                 type: 'order',
               });
+            } else {
+              // Regular order from non-supplier node
+              let actualQty = orderQty;
+              if (isFinite(supplier.bufferCurrent)) {
+                actualQty = Math.min(orderQty, supplier.bufferCurrent);
+                supplier.bufferCurrent -= actualQty;
+              }
+
+              if (actualQty > 0) {
+                const order: Order = {
+                  id: `order-${++_nextOrderId}`,
+                  quantity: actualQty,
+                  fromId: supplier.id,
+                  toId: node.id,
+                  daysRemaining: node.leadTime,
+                  totalDays: node.leadTime,
+                  createdDay: newDay,
+                };
+                orders.push(order);
+                stats.ordersPlaced++;
+
+                newLog.push({
+                  id: `log-${++_nextLogId}`,
+                  day: newDay,
+                  message: `🔗 Канат: ${node.name} ← заказ ${actualQty} ед. (${getZoneLabel(zone)})`,
+                  type: 'order',
+                });
+              }
             }
           }
         }
@@ -219,6 +261,7 @@ export function useSimulator() {
         day: newDay,
         nodes,
         orders,
+        productionQueue: prodQueue,
         log: [...newLog, ...prev.log].slice(0, 200),
         stats,
       };
@@ -243,15 +286,18 @@ export function useSimulator() {
     setState((prev) => ({ ...prev, isRunning: !prev.isRunning }));
   }, []);
 
-  const reset = useCallback(() => {
+  const reset = useCallback((newConfig?: SimConfig) => {
     _nextOrderId = 0;
     _nextLogId = 0;
-    setState(createInitialState());
+    _nextProdId = 0;
+    const cfg = newConfig ?? configRef.current;
+    configRef.current = cfg;
+    setState(createInitialState(cfg));
   }, []);
 
   const setSpeed = useCallback((speed: number) => {
     setState((prev) => ({ ...prev, speed }));
   }, []);
 
-  return { state, toggleRunning, reset, setSpeed };
+  return { state, toggleRunning, reset, setSpeed, config: configRef.current };
 }

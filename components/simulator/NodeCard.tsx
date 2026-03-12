@@ -1,9 +1,9 @@
 'use client';
 
-import type { SimNode, Order } from './types';
+import type { SimNode, Order, ProductionOrder } from './types';
 import { getBufferZone } from './types';
 import { Card, CardContent } from '@/components/ui/card';
-import { Factory, Warehouse, Store, Package } from 'lucide-react';
+import { Factory, Warehouse, Store, Package, Truck, Cog } from 'lucide-react';
 
 const icons = {
   supplier: Factory,
@@ -14,9 +14,10 @@ const icons = {
 interface NodeCardProps {
   node: SimNode;
   orders: Order[];
+  productionQueue?: ProductionOrder[];
 }
 
-export function NodeCard({ node, orders }: NodeCardProps) {
+export function NodeCard({ node, orders, productionQueue = [] }: NodeCardProps) {
   const Icon = icons[node.type];
   const zone = getBufferZone(node.bufferCurrent, node.bufferMax);
   const pendingOrders = orders.filter((o) => o.toId === node.id);
@@ -66,13 +67,102 @@ export function NodeCard({ node, orders }: NodeCardProps) {
         </div>
 
         {isSupplier ? (
-          <div className="text-center py-6">
-            <span className="text-4xl font-mono font-bold text-primary">
-              ∞
-            </span>
-            <p className="text-xs text-muted-foreground mt-2">
-              Неограниченный запас
-            </p>
+          <div>
+            {/* Production capacity info */}
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] text-muted-foreground">Мощность</span>
+              <span className="text-xs font-mono font-semibold text-foreground tabular-nums">
+                {node.productionCapacity ?? '—'} ед./день
+              </span>
+            </div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] text-muted-foreground">Цикл производства</span>
+              <span className="text-xs font-mono font-semibold text-foreground tabular-nums">
+                {node.productionLeadTime ?? '—'} дн.
+              </span>
+            </div>
+
+            {/* Production queue */}
+            {productionQueue.length > 0 ? (
+              <div className="pt-3 border-t border-border space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    В производстве
+                  </span>
+                  <span className="text-[10px] font-mono text-primary tabular-nums">
+                    {productionQueue.reduce((s, p) => s + p.quantity, 0)} ед.
+                  </span>
+                </div>
+                {productionQueue
+                  .sort((a, b) => a.daysRemaining - b.daysRemaining)
+                  .map((prod) => {
+                    const progress =
+                      ((prod.totalDays - prod.daysRemaining) / prod.totalDays) * 100;
+                    return (
+                      <div key={prod.id} className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${progress}%`,
+                              background: 'hsl(45 93% 47%)',
+                            }}
+                          />
+                        </div>
+                        <Cog className="w-3 h-3 text-yellow-500 flex-shrink-0 animate-spin" style={{ animationDuration: '3s' }} />
+                        <span className="text-[10px] font-mono tabular-nums text-foreground whitespace-nowrap">
+                          {prod.quantity} ед.
+                        </span>
+                        <span className="text-[10px] font-mono tabular-nums text-muted-foreground whitespace-nowrap">
+                          {prod.daysRemaining === 1 ? 'завтра' : `${prod.daysRemaining} дн.`}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            ) : (
+              <div className="pt-3 border-t border-border">
+                <p className="text-[10px] text-muted-foreground text-center py-2">
+                  Нет заказов в производстве
+                </p>
+              </div>
+            )}
+
+            {/* Outgoing shipping orders */}
+            {orders.filter((o) => o.fromId === node.id).length > 0 && (
+              <div className="mt-3 pt-3 border-t border-border space-y-1.5">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Отгружено в доставку
+                </span>
+                {orders
+                  .filter((o) => o.fromId === node.id)
+                  .sort((a, b) => a.daysRemaining - b.daysRemaining)
+                  .map((order) => {
+                    const progress =
+                      ((order.totalDays - order.daysRemaining) / order.totalDays) * 100;
+                    return (
+                      <div key={order.id} className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${progress}%`,
+                              background: 'hsl(var(--primary))',
+                            }}
+                          />
+                        </div>
+                        <Truck className="w-3 h-3 text-primary flex-shrink-0" />
+                        <span className="text-[10px] font-mono tabular-nums text-foreground whitespace-nowrap">
+                          {order.quantity} ед.
+                        </span>
+                        <span className="text-[10px] font-mono tabular-nums text-muted-foreground whitespace-nowrap">
+                          {order.daysRemaining === 1 ? 'завтра' : `${order.daysRemaining} дн.`}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -161,6 +251,46 @@ export function NodeCard({ node, orders }: NodeCardProps) {
                 </div>
               )}
             </div>
+
+            {/* In-transit orders detail */}
+            {pendingOrders.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-border space-y-1.5">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Заказы в пути
+                </span>
+                {pendingOrders
+                  .sort((a, b) => a.daysRemaining - b.daysRemaining)
+                  .map((order) => {
+                    const progress =
+                      ((order.totalDays - order.daysRemaining) / order.totalDays) * 100;
+                    return (
+                      <div key={order.id} className="flex items-center gap-2">
+                        {/* Progress bar */}
+                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${progress}%`,
+                              background: 'hsl(var(--primary))',
+                            }}
+                          />
+                        </div>
+                        {/* Truck icon at progress position */}
+                        <Truck className="w-3 h-3 text-primary flex-shrink-0" />
+                        {/* Info */}
+                        <span className="text-[10px] font-mono tabular-nums text-foreground whitespace-nowrap">
+                          {order.quantity} ед.
+                        </span>
+                        <span className="text-[10px] font-mono tabular-nums text-muted-foreground whitespace-nowrap">
+                          {order.daysRemaining === 1
+                            ? 'завтра'
+                            : `${order.daysRemaining} дн.`}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </>
         )}
       </CardContent>
