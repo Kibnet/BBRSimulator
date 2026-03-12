@@ -27,6 +27,9 @@ export function OrderBadge({ order, currentDay, compact = false }: OrderBadgePro
         <span>{order.number}</span>
         <span className="opacity-60">{order.quantity}ед</span>
         <span className="opacity-50">→д{order.dueDay}</span>
+        {order.releaseDay > 0 && order.status === 'queued' && (
+          <span className="opacity-40">🚀д{order.releaseDay}</span>
+        )}
       </div>
     );
   }
@@ -69,6 +72,20 @@ export function OrderBadge({ order, currentDay, compact = false }: OrderBadgePro
           {daysLeft >= 0 ? `осталось ${daysLeft} дн.` : `просрочен ${-daysLeft} дн.`}
         </span>
       </div>
+
+      {/* Drum slot & release info */}
+      {order.drumSlotStart > 0 && (
+        <div className="flex items-center justify-between text-[10px] mt-0.5">
+          <span className="text-muted-foreground/70 font-mono">
+            барабан: день {order.drumSlotStart}
+          </span>
+          {order.releaseDay > 0 && order.status === 'queued' && (
+            <span className="font-mono font-medium" style={{ color: currentDay >= order.releaseDay ? ZONE_COLORS.green : 'hsl(var(--muted-foreground) / 0.5)' }}>
+              запуск: день {order.releaseDay}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Processing progress bar (if on a machine) */}
       {order.processingTotal > 0 && order.processingRemaining > 0 && (

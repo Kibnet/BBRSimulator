@@ -33,6 +33,12 @@ export interface CustomerOrder {
   processingTotal: number;
   /** Quantity already produced (units flowing through) */
   quantityCompleted: number;
+  /** Planned drum slot start day (0 = not scheduled) */
+  drumSlotStart: number;
+  /** Planned drum machine ID */
+  plannedDrumMachineId: string | null;
+  /** Day when order should be released to Op1 (rope) */
+  releaseDay: number;
 }
 
 /** A machine (equipment unit) in a production operation */
@@ -45,6 +51,8 @@ export interface Machine {
   capacity: number;
   /** Order currently being processed (null if idle) */
   currentOrderId: string | null;
+  /** Total days this machine has been idle */
+  idleDays: number;
 }
 
 /** Production operation stage */
@@ -79,6 +87,8 @@ export interface ProdSimState {
   machines: Machine[];
   log: ProdLogEntry[];
   stats: ProdStats;
+  /** Drum machine schedule: machineId → next available day */
+  drumSchedule: Record<string, number>;
 }
 
 /* ── Helpers ── */
@@ -146,16 +156,16 @@ export function getZoneLabel(zone: BufferZone): string {
 
 export const DEFAULT_MACHINES: Machine[] = [
   // Op 1 — Заготовка (3 machines)
-  { id: 'op1-m1', name: 'Станок 1А', operationId: 1, capacity: 12, currentOrderId: null },
-  { id: 'op1-m2', name: 'Станок 1Б', operationId: 1, capacity: 10, currentOrderId: null },
-  { id: 'op1-m3', name: 'Станок 1В', operationId: 1, capacity: 8, currentOrderId: null },
+  { id: 'op1-m1', name: 'Станок 1А', operationId: 1, capacity: 12, currentOrderId: null, idleDays: 0 },
+  { id: 'op1-m2', name: 'Станок 1Б', operationId: 1, capacity: 10, currentOrderId: null, idleDays: 0 },
+  { id: 'op1-m3', name: 'Станок 1В', operationId: 1, capacity: 8, currentOrderId: null, idleDays: 0 },
   // Op 2 — Обработка (2 machines) — THE DRUM / constraint
-  { id: 'op2-m1', name: 'Станок 2А', operationId: 2, capacity: 8, currentOrderId: null },
-  { id: 'op2-m2', name: 'Станок 2Б', operationId: 2, capacity: 6, currentOrderId: null },
+  { id: 'op2-m1', name: 'Станок 2А', operationId: 2, capacity: 8, currentOrderId: null, idleDays: 0 },
+  { id: 'op2-m2', name: 'Станок 2Б', operationId: 2, capacity: 6, currentOrderId: null, idleDays: 0 },
   // Op 3 — Сборка (3 machines)
-  { id: 'op3-m1', name: 'Станок 3А', operationId: 3, capacity: 10, currentOrderId: null },
-  { id: 'op3-m2', name: 'Станок 3Б', operationId: 3, capacity: 8, currentOrderId: null },
-  { id: 'op3-m3', name: 'Станок 3В', operationId: 3, capacity: 6, currentOrderId: null },
+  { id: 'op3-m1', name: 'Станок 3А', operationId: 3, capacity: 10, currentOrderId: null, idleDays: 0 },
+  { id: 'op3-m2', name: 'Станок 3Б', operationId: 3, capacity: 8, currentOrderId: null, idleDays: 0 },
+  { id: 'op3-m3', name: 'Станок 3В', operationId: 3, capacity: 6, currentOrderId: null, idleDays: 0 },
 ];
 
 export const OPERATIONS: OperationStage[] = [
@@ -253,6 +263,7 @@ export function buildMachinesFromConfig(config: ProdConfig): Machine[] {
         operationId: opId,
         capacity: mc.capacity,
         currentOrderId: null,
+        idleDays: 0,
       });
     });
   });

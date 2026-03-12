@@ -46,14 +46,21 @@ const OP_NAMES: Record<number, string> = { 1: 'Заготовка', 2: 'Обра
 
 /* ── Initial state ── */
 function createInitialState(config: ProdConfig): ProdSimState {
+  const machines = buildMachinesFromConfig(config);
+  // Initialize drum schedule: each drum machine available from day 0
+  const drumSchedule: Record<string, number> = {};
+  machines.filter((m) => m.operationId === 2).forEach((m) => {
+    drumSchedule[m.id] = 0;
+  });
   return {
     day: 0,
     isRunning: false,
     speed: 800,
     orders: [],
-    machines: buildMachinesFromConfig(config),
+    machines,
     log: [],
     stats: { totalOrders: 0, shippedOnTime: 0, shippedLate: 0, totalShipped: 0 },
+    drumSchedule,
   };
 }
 
@@ -68,6 +75,7 @@ export function useProductionSim() {
       const newDay = prev.day + 1;
       const orders = prev.orders.map((o) => ({ ...o }));
       const machines = prev.machines.map((m) => ({ ...m }));
+      const drumSchedule = { ...prev.drumSchedule };
       const newLog: ProdLogEntry[] = [];
       const stats: ProdStats = { ...prev.stats };
 
@@ -77,37 +85,52 @@ export function useProductionSim() {
       /* ── Step 1: Generate new customer orders ── */
       const cfg = configRef.current;
       const og = cfg.orderGen;
-      // ordersPerDay e.g. 1.2 means ~1.2 orders per day on average
       let newOrderCount = Math.floor(og.ordersPerDay);
       if (Math.random() < (og.ordersPerDay - newOrderCount)) newOrderCount++;
+
       for (let i = 0; i < newOrderCount; i++) {
         const qty = randInt(og.qtyMin, og.qtyMax);
 
         let bufferDays: number;
+        let drumSlotStart = 0;
+        let plannedDrumMachineId: string | null = null;
+        let releaseDay = 0;
+
         if (cfg.dynamicDueDates) {
-          // Calculate realistic due date based on current system load
+          // Find drum machine with earliest available slot
           const drumMachines = machines.filter((m) => m.operationId === 2);
-          const drumCapacity = drumMachines.reduce((s, m) => s + m.capacity, 0) || 1;
+          let bestMachineId = drumMachines[0]?.id ?? '';
+          let bestAvailable = Infinity;
+          for (const dm of drumMachines) {
+            const avail = Math.max(drumSchedule[dm.id] ?? 0, newDay);
+            if (avail < bestAvailable) {
+              bestAvailable = avail;
+              bestMachineId = dm.id;
+            }
+          }
+          const bestMachine = drumMachines.find((m) => m.id === bestMachineId);
+          const machineCapacity = bestMachine?.capacity ?? 1;
+
+          // Assign drum slot
+          drumSlotStart = Math.max(drumSchedule[bestMachineId] ?? 0, newDay);
+          const drumProcessingDays = Math.max(1, Math.ceil(qty / machineCapacity));
+          drumSchedule[bestMachineId] = drumSlotStart + drumProcessingDays;
+          plannedDrumMachineId = bestMachineId;
+
+          // Average capacities for time estimates
           const op1Capacity = machines.filter((m) => m.operationId === 1).reduce((s, m) => s + m.capacity, 0) || 1;
           const op3Capacity = machines.filter((m) => m.operationId === 3).reduce((s, m) => s + m.capacity, 0) || 1;
+          const op1MachineCount = machines.filter((m) => m.operationId === 1).length || 1;
+          const op3MachineCount = machines.filter((m) => m.operationId === 3).length || 1;
+          const avgOp1Time = Math.ceil(qty / (op1Capacity / op1MachineCount));
+          const avgOp2Time = drumProcessingDays;
+          const avgOp3Time = Math.ceil(qty / (op3Capacity / op3MachineCount));
 
-          // ALL unfinished orders occupy the drum queue
-          const allActive = orders.filter(
-            (o) => !['finished', 'shipped'].includes(o.status)
-          );
-          const totalQtyInSystem = allActive.reduce((s, o) => s + o.quantity, 0);
+          // dueDay = drumSlotStart + (avgOp2Time + avgOp3Time) × 3
+          bufferDays = (drumSlotStart - newDay) + (avgOp2Time + avgOp3Time) * 3;
 
-          // Estimated processing time for this order through each operation
-          const op1Days = Math.ceil(qty / op1Capacity);
-          const drumDays = Math.ceil(qty / drumCapacity);
-          const op3Days = Math.ceil(qty / op3Capacity);
-
-          // Wait time at drum = all queued qty / drum capacity
-          const drumWaitDays = Math.ceil(totalQtyInSystem / drumCapacity);
-
-          // Buffer = total execution time across all operations × 3
-          const totalExecTime = op1Days + drumWaitDays + drumDays + op3Days;
-          bufferDays = totalExecTime * 3;
+          // releaseDay = drumSlotStart - avgOp1Time × 3
+          releaseDay = Math.max(newDay, drumSlotStart - avgOp1Time * 3);
         } else {
           bufferDays = randInt(og.bufferMin, og.bufferMax);
         }
@@ -123,14 +146,20 @@ export function useProductionSim() {
           processingRemaining: 0,
           processingTotal: 0,
           quantityCompleted: 0,
+          drumSlotStart,
+          plannedDrumMachineId,
+          releaseDay,
         };
         orders.push(order);
         stats.totalOrders++;
 
+        const logMsg = cfg.dynamicDueDates
+          ? `📋 Новый заказ ${order.number}: ${qty} ед., барабан д${drumSlotStart}, запуск д${releaseDay}, отгрузка д${order.dueDay}`
+          : `📋 Новый заказ ${order.number}: ${qty} ед., срок — день ${order.dueDay}`;
         newLog.push({
           id: `log-${++_logId}`,
           day: newDay,
-          message: `📋 Новый заказ ${order.number}: ${qty} ед., срок — день ${order.dueDay}`,
+          message: logMsg,
           type: 'order',
         });
       }
@@ -180,14 +209,38 @@ export function useProductionSim() {
         const feedStatus = wipForOp(opId);
         if (!feedStatus) continue;
 
-        // ── Rope: if enabled, block release to Op1 when WIP before drum is at limit ──
+        // ── Rope: if enabled and dynamic dates, use releaseDay; otherwise use WIP limit ──
         if (opId === 1 && cfg.ropeEnabled) {
-          const wipBeforeDrum = orders.filter(
-            (o) => o.status === 'op1' || o.status === 'wip1'
-          ).length;
-          if (wipBeforeDrum >= cfg.ropeWIPLimit) {
-            // Rope holds — don't start new work
-            continue;
+          if (cfg.dynamicDueDates) {
+            // Rope by releaseDay: only release orders whose releaseDay <= today
+            const waiting = orders
+              .filter((o) => o.status === feedStatus && o.releaseDay <= newDay)
+              .sort((a, b) => getBufferPenetration(b, newDay) - getBufferPenetration(a, newDay));
+
+            for (const machine of opMachines) {
+              const order = waiting.shift();
+              if (!order) break;
+              const processingDays = Math.max(1, Math.ceil(order.quantity / machine.capacity));
+              order.status = 'op1';
+              order.machineId = machine.id;
+              order.processingRemaining = processingDays;
+              order.processingTotal = processingDays;
+              machine.currentOrderId = order.id;
+              newLog.push({
+                id: `log-${++_logId}`,
+                day: newDay,
+                message: `🔧 ${order.number} → ${machine.name} (${OP_NAMES[1]}, ${processingDays} дн.)`,
+                type: 'release',
+              });
+            }
+            continue; // skip default assignment for Op1
+          } else {
+            const wipBeforeDrum = orders.filter(
+              (o) => o.status === 'op1' || o.status === 'wip1'
+            ).length;
+            if (wipBeforeDrum >= cfg.ropeWIPLimit) {
+              continue;
+            }
           }
         }
 
@@ -217,7 +270,14 @@ export function useProductionSim() {
         }
       }
 
-      /* ── Step 4: Ship finished orders that are due ── */
+      /* ── Step 4: Track idle time for machines ── */
+      for (const machine of machines) {
+        if (!machine.currentOrderId) {
+          machine.idleDays++;
+        }
+      }
+
+      /* ── Step 5: Ship finished orders that are due ── */
       for (const order of orders) {
         if (order.status !== 'finished') continue;
 
@@ -272,6 +332,7 @@ export function useProductionSim() {
         day: newDay,
         orders: activeOrders,
         machines,
+        drumSchedule,
         log: [...newLog, ...prev.log].slice(0, 200),
         stats,
       };

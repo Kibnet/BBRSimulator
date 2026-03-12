@@ -402,6 +402,11 @@ function OperationColumn({
   currentDay: number;
   isDrum: boolean;
 }) {
+  const totalIdleDays = machines.reduce((s, m) => s + m.idleDays, 0);
+  const avgBusyPct = currentDay > 0
+    ? ((currentDay * machines.length - totalIdleDays) / (currentDay * machines.length)) * 100
+    : 0;
+
   return (
     <Card className={`flex-1 min-w-0 ${isDrum ? 'border-destructive/30 glow-red' : ''}`}>
       <CardContent className="p-3">
@@ -424,6 +429,11 @@ function OperationColumn({
             </div>
             <p className="text-[10px] text-muted-foreground">
               {machines.length} ед. оборуд. · Σ {machines.reduce((s, m) => s + m.capacity, 0)} ед/дн
+              {currentDay > 0 && (
+                <span className={`ml-1.5 font-mono ${avgBusyPct > 80 ? 'text-green-500' : avgBusyPct > 50 ? 'text-yellow-500' : 'text-red-500'}`}>
+                  · загр. {Math.round(avgBusyPct)}%
+                </span>
+              )}
             </p>
           </div>
         </div>

@@ -16,6 +16,8 @@ export function MachineCard({ machine, order, currentDay }: MachineCardProps) {
   const progress = order && order.processingTotal > 0
     ? ((order.processingTotal - order.processingRemaining) / order.processingTotal) * 100
     : 0;
+  const idlePct = currentDay > 0 ? (machine.idleDays / currentDay) * 100 : 0;
+  const busyPct = 100 - idlePct;
 
   return (
     <div
@@ -77,6 +79,24 @@ export function MachineCard({ machine, order, currentDay }: MachineCardProps) {
         </div>
       ) : (
         <p className="text-[10px] text-muted-foreground/60 italic">простаивает</p>
+      )}
+
+      {/* Idle/busy stats */}
+      {currentDay > 0 && (
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${busyPct}%`,
+                background: busyPct > 80 ? 'hsl(142 71% 45%)' : busyPct > 50 ? 'hsl(45 93% 47%)' : 'hsl(0 72% 51%)',
+              }}
+            />
+          </div>
+          <span className="text-[9px] font-mono text-muted-foreground tabular-nums whitespace-nowrap">
+            {Math.round(busyPct)}% · {machine.idleDays}дн
+          </span>
+        </div>
       )}
     </div>
   );
