@@ -42,7 +42,7 @@ export function MachineCard({ machine, order, currentDay, onCapacityChange }: Ma
 
   return (
     <div
-      className={`rounded-lg border p-2.5 transition-all duration-300 ${
+      className={`rounded-lg border p-2.5 transition-all duration-300 min-h-[72px] ${
         isIdle ? 'border-border bg-secondary/30' : ''
       }`}
       style={
@@ -100,15 +100,15 @@ export function MachineCard({ machine, order, currentDay, onCapacityChange }: Ma
 
       {order ? (
         <div>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-1">
             <span
-              className="text-[10px] font-bold font-mono"
+              className="text-[10px] font-bold font-mono whitespace-nowrap flex-shrink-0"
               style={{ color: ZONE_COLORS[zone!] }}
             >
               {order.number}
             </span>
-            <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
-              {order.quantity} ед · {formatTime(order.processingRemaining)}
+            <span className="text-[10px] text-muted-foreground font-mono tabular-nums whitespace-nowrap">
+              {order.quantity}ед · {formatTime(order.processingRemaining)}
             </span>
           </div>
           {/* Progress bar */}
@@ -123,7 +123,7 @@ export function MachineCard({ machine, order, currentDay, onCapacityChange }: Ma
           </div>
         </div>
       ) : (
-        <p className="text-[10px] text-muted-foreground/60 italic">простаивает</p>
+        <p className="text-[10px] text-muted-foreground/60 italic h-[26px] flex items-center">простаивает</p>
       )}
 
       {/* Idle/busy stats */}

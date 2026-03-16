@@ -17,7 +17,7 @@ export function OrderBadge({ order, currentDay, compact = false }: OrderBadgePro
   if (compact) {
     return (
       <div
-        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold border"
+        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold border whitespace-nowrap"
         style={{
           background: ZONE_BG[zone],
           borderColor: ZONE_BORDER[zone],
@@ -53,20 +53,20 @@ export function OrderBadge({ order, currentDay, compact = false }: OrderBadgePro
       </div>
 
       <div className="flex items-center justify-between text-[10px]">
-        <span className="text-muted-foreground">
+        <span className="text-muted-foreground whitespace-nowrap">
           {order.quantity} ед.
         </span>
-        <span className="text-muted-foreground font-mono">
+        <span className="text-muted-foreground font-mono whitespace-nowrap">
           отгрузка: {formatTime(order.dueDay)}
         </span>
       </div>
 
       <div className="flex items-center justify-between text-[10px] mt-0.5">
-        <span className="text-muted-foreground/70">
+        <span className="text-muted-foreground/70 whitespace-nowrap">
           создан: {formatTime(order.createdDay)}
         </span>
         <span
-          className="font-mono font-medium"
+          className="font-mono font-medium whitespace-nowrap"
           style={{ color: hoursLeft < 0 ? ZONE_COLORS.red : 'hsl(var(--muted-foreground))' }}
         >
           {hoursLeft >= 0 ? `осталось ${formatTime(hoursLeft)}` : `просрочен ${formatTime(-hoursLeft)}`}
