@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { CustomerOrder, Machine, ProdLogEntry, ProdSimState, ProdStats, ProdConfig } from './types';
+import type { CustomerOrder, Machine, ProdLogEntry, ProdSimState, ProdStats, ProdConfig, FinancialEvent } from './types';
 import {
   getBufferPenetration,
   DEFAULT_PROD_CONFIG,
@@ -73,8 +73,9 @@ function createInitialState(config: ProdConfig): ProdSimState {
     orders: [],
     machines,
     log: [],
-    stats: { totalOrders: 0, shippedOnTime: 0, shippedLate: 0, totalShipped: 0 },
+    stats: { totalOrders: 0, shippedOnTime: 0, shippedLate: 0, totalShipped: 0, totalSpent: 0, totalEarned: 0, totalLateLoss: 0 },
     drumSchedule,
+    financialEvents: [],
   };
 }
 
@@ -92,6 +93,7 @@ export function useProductionSim() {
       const drumSchedule = { ...prev.drumSchedule };
       const newLog: ProdLogEntry[] = [];
       const stats: ProdStats = { ...prev.stats };
+      const financialEvents = [...prev.financialEvents];
 
       const findOrder = (id: string) => orders.find((o) => o.id === id);
       const findMachine = (id: string) => machines.find((m) => m.id === id);
@@ -168,6 +170,11 @@ export function useProductionSim() {
         };
         orders.push(order);
         stats.totalOrders++;
+
+        // Financial: spent on raw materials
+        const rawCost = qty * cfg.unitCostRaw;
+        stats.totalSpent += rawCost;
+        financialEvents.push({ hour: newHour, spent: rawCost, earned: 0 });
 
         const logMsg = cfg.dynamicDueDates
           ? `📋 Новый заказ ${order.number}: ${qty} ед., барабан ${formatTime(drumSlotStart)}, запуск ${formatTime(releaseDay)}, отгрузка ${formatTime(order.dueDay)}`
@@ -302,6 +309,19 @@ export function useProductionSim() {
           const wasLate = newHour > order.dueDay;
           order.status = 'shipped';
           stats.totalShipped++;
+
+          // Financial: earned from shipment
+          const revenue = order.quantity * cfg.unitPriceSell;
+          stats.totalEarned += revenue;
+          let lateLoss = 0;
+          if (wasLate) {
+            // Late penalty: 1% of revenue per hour late
+            const hoursLate = newHour - order.dueDay;
+            lateLoss = Math.round(revenue * 0.01 * hoursLate);
+            stats.totalLateLoss += lateLoss;
+          }
+          financialEvents.push({ hour: newHour, spent: 0, earned: revenue - lateLoss });
+
           if (wasLate) {
             stats.shippedLate++;
             newLog.push({
@@ -329,6 +349,12 @@ export function useProductionSim() {
           order.status = 'shipped';
           stats.totalShipped++;
           stats.shippedOnTime++;
+
+          // Financial: earned from early shipment (full price)
+          const revenue = order.quantity * cfg.unitPriceSell;
+          stats.totalEarned += revenue;
+          financialEvents.push({ hour: newHour, spent: 0, earned: revenue });
+
           newLog.push({
             id: `log-${++_logId}`,
             day: newHour,
@@ -343,6 +369,11 @@ export function useProductionSim() {
         (o) => o.status !== 'shipped' || newHour - o.dueDay < 5 * HOURS_PER_DAY
       );
 
+      // Trim financial events older than 30 days (720 hours)
+      const trimmedFinancialEvents = financialEvents.filter(
+        (e) => newHour - e.hour <= 30 * HOURS_PER_DAY
+      );
+
       return {
         ...prev,
         day: newHour,
@@ -351,6 +382,7 @@ export function useProductionSim() {
         drumSchedule,
         log: [...newLog, ...prev.log].slice(0, 200),
         stats,
+        financialEvents: trimmedFinancialEvents,
       };
     });
   }, []);

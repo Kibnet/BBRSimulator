@@ -5,7 +5,7 @@ import type { ProdConfig, MachineConfig } from './types';
 import { DEFAULT_PROD_CONFIG, PROD_PROFILES } from './types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings, RotateCcw, Check, X, Factory, ClipboardList, Zap, Plus, Trash2, Shield, Link2, CalendarClock } from 'lucide-react';
+import { Settings, RotateCcw, Check, X, Factory, ClipboardList, Zap, Plus, Trash2, Shield, Link2, CalendarClock, Banknote } from 'lucide-react';
 
 interface ProdSettingsPanelProps {
   currentConfig: ProdConfig;
@@ -216,6 +216,34 @@ export function ProdSettingsPanel({ currentConfig, isRunning, onApply, onClose }
             </section>
 
             <div className="border-t border-border" />
+
+            {/* ── Financial ── */}
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded bg-secondary flex items-center justify-center">
+                  <Banknote className="w-3.5 h-3.5 text-primary" />
+                </div>
+                <h4 className="text-sm font-medium text-foreground">Стоимость</h4>
+              </div>
+              <div className="space-y-2.5 pl-8">
+                <NumField
+                  label="Себестоимость ед."
+                  value={config.unitCostRaw}
+                  onChange={(v) => setConfig((prev) => ({ ...prev, unitCostRaw: v }))}
+                  min={1}
+                  max={99999}
+                  unit="₽"
+                />
+                <NumField
+                  label="Цена продажи ед."
+                  value={config.unitPriceSell}
+                  onChange={(v) => setConfig((prev) => ({ ...prev, unitPriceSell: v }))}
+                  min={1}
+                  max={99999}
+                  unit="₽"
+                />
+              </div>
+            </section>
 
             <div className="border-t border-border" />
 

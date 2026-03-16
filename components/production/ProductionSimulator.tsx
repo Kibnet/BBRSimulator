@@ -21,8 +21,9 @@ import {
   formatTime,
   getSimDay,
   getSimHour,
+  formatMoney,
 } from './types';
-import type { CustomerOrder, ProdConfig, Machine } from './types';
+import type { CustomerOrder, ProdConfig, Machine, FinancialEvent } from './types';
 import {
   Play,
   Pause,
@@ -38,6 +39,8 @@ import {
   Settings,
   Link2,
   CalendarClock,
+  DollarSign,
+  Banknote,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -54,6 +57,7 @@ export function ProductionSimulator() {
   const [editingWIP, setEditingWIP] = useState(false);
   const [wipValue, setWipValue] = useState(String(config.ropeWIPLimit));
   const { day, orders, machines, stats, log } = state;
+  const financialEvents = state.financialEvents;
 
   const handleApplyConfig = (newConfig: ProdConfig) => {
     applyConfig(newConfig);
@@ -88,6 +92,28 @@ export function ProductionSimulator() {
     stats.totalShipped > 0
       ? ((stats.shippedOnTime / stats.totalShipped) * 100).toFixed(1)
       : '100.0';
+
+  // Financial calculations
+  const queuedQty = queued.reduce((s, o) => s + o.quantity, 0);
+  const queuedCost = queuedQty * config.unitCostRaw;
+  const queuedRevenue = queuedQty * config.unitPriceSell;
+
+  const inProdOrders = orders.filter((o) => ['op1', 'op2', 'op3', 'wip1', 'wip2'].includes(o.status));
+  const wipQty = inProdOrders.reduce((s, o) => s + o.quantity, 0);
+  const wipFrozen = wipQty * config.unitCostRaw;
+
+  const fgQty = finished.reduce((s, o) => s + o.quantity, 0);
+  const fgValue = fgQty * config.unitPriceSell;
+
+  const shippedQty = shipped.reduce((s, o) => s + o.quantity, 0);
+
+  // 30-day rolling window
+  const windowHours = 30 * HOURS_PER_DAY;
+  const recentEvents = financialEvents.filter((e) => day - e.hour <= windowHours);
+  const last30Spent = recentEvents.reduce((s, e) => s + e.spent, 0);
+  const last30Earned = recentEvents.reduce((s, e) => s + e.earned, 0);
+  const daysElapsed = Math.max(1, Math.min(30, day / HOURS_PER_DAY));
+  const profitRatePerDay = Math.round((last30Earned - last30Spent) / daysElapsed);
 
   return (
     <div className="min-h-screen bg-background bg-dot-grid">
@@ -233,8 +259,13 @@ export function ProductionSimulator() {
             <PipelineStage
               icon={<ClipboardList className="w-4 h-4 text-primary" />}
               title="Очередь заказов"
-              subtitle={`${queued.length} заказов`}
+              subtitle={`${queued.length} заказов · ${queuedQty} ед.`}
               className="xl:w-48"
+              financial={<>
+                <span className="text-destructive">{formatMoney(queuedCost)}</span>
+                {' · '}
+                <span className="text-green-500">{formatMoney(queuedRevenue)}</span>
+              </>}
             >
               <OrderList orders={queued} currentDay={day} maxShow={6} />
             </PipelineStage>
@@ -252,7 +283,7 @@ export function ProductionSimulator() {
               onCapacityChange={updateMachineCapacity}
             />
 
-            <WIPColumn label="П/ф 1" orders={wip1} currentDay={day} />
+            <WIPColumn label="П/ф 1" orders={wip1} currentDay={day} unitCost={config.unitCostRaw} />
 
             {/* Op 2 — DRUM */}
             <OperationColumn
@@ -265,7 +296,7 @@ export function ProductionSimulator() {
               onCapacityChange={updateMachineCapacity}
             />
 
-            <WIPColumn label="П/ф 2" orders={wip2} currentDay={day} />
+            <WIPColumn label="П/ф 2" orders={wip2} currentDay={day} unitCost={config.unitCostRaw} />
 
             {/* Op 3 */}
             <OperationColumn
@@ -284,8 +315,9 @@ export function ProductionSimulator() {
             <PipelineStage
               icon={<Warehouse className="w-4 h-4 text-primary" />}
               title="Склад ГП"
-              subtitle={`${finished.length} заказов`}
+              subtitle={`${finished.length} заказов · ${fgQty} ед.`}
               className="xl:w-48"
+              financial={<span className="text-green-500">{formatMoney(fgValue)}</span>}
             >
               <OrderList orders={finished} currentDay={day} maxShow={6} />
             </PipelineStage>
@@ -298,6 +330,7 @@ export function ProductionSimulator() {
               title="Отгружено"
               subtitle={`${stats.totalShipped} всего`}
               className="xl:w-40"
+              financial={<span className="text-green-500">{formatMoney(stats.totalEarned)}</span>}
             >
               <div className="text-center py-3">
                 <span className="text-2xl font-mono font-bold text-foreground tabular-nums">
@@ -324,7 +357,7 @@ export function ProductionSimulator() {
           />
         </section>
 
-        {/* ── Bottom: Stats + Legend + Log ── */}
+        {/* ── Bottom: Stats + Finance + Legend + Log ── */}
         <section className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
           <div className="space-y-4">
             {/* Statistics */}
@@ -354,6 +387,32 @@ export function ProductionSimulator() {
                   orders.filter((o) => ['op1','op2','op3','wip1','wip2'].includes(o.status)).length
                 )} primary />
                 <StatRow label="На складе ГП" value={String(finished.length)} />
+              </CardContent>
+            </Card>
+
+            {/* Financial */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Banknote className="w-4 h-4 text-primary" />
+                  Финансы
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <StatRow label="Потрачено (всего)" value={formatMoney(stats.totalSpent)} danger />
+                <StatRow label="Заработано (всего)" value={formatMoney(stats.totalEarned)} primary={stats.totalEarned > 0} />
+                <div className="border-t border-border my-1" />
+                <StatRow label="Потрачено (30д)" value={formatMoney(last30Spent)} danger />
+                <StatRow label="Заработано (30д)" value={formatMoney(last30Earned)} primary={last30Earned > 0} />
+                <StatRow
+                  label="Прибыль/день (30д)"
+                  value={`${profitRatePerDay >= 0 ? '+' : ''}${formatMoney(profitRatePerDay)}`}
+                  primary={profitRatePerDay > 0}
+                  danger={profitRatePerDay < 0}
+                />
+                <div className="border-t border-border my-1" />
+                <StatRow label="Штрафы за опоздание" value={formatMoney(stats.totalLateLoss)} danger={stats.totalLateLoss > 0} />
+                <StatRow label="Заморожено в НЗП" value={formatMoney(wipFrozen)} highlight />
               </CardContent>
             </Card>
 
@@ -406,12 +465,14 @@ function PipelineStage({
   subtitle,
   children,
   className = '',
+  financial,
 }: {
   icon: React.ReactNode;
   title: string;
   subtitle: string;
   children: React.ReactNode;
   className?: string;
+  financial?: React.ReactNode;
 }) {
   return (
     <Card className={`flex-shrink-0 ${className}`}>
@@ -423,6 +484,9 @@ function PipelineStage({
           <div>
             <h3 className="text-xs font-semibold text-foreground leading-tight">{title}</h3>
             <p className="text-[10px] text-muted-foreground">{subtitle}</p>
+            {financial && (
+              <p className="text-[10px] font-mono tabular-nums whitespace-nowrap">{financial}</p>
+            )}
           </div>
         </div>
         {children}
@@ -504,18 +568,24 @@ function OperationColumn({
   );
 }
 
-function WIPColumn({ label, orders: wipOrders, currentDay }: {
+function WIPColumn({ label, orders: wipOrders, currentDay, unitCost }: {
   label: string;
   orders: CustomerOrder[];
   currentDay: number;
+  unitCost: number;
 }) {
+  const qty = wipOrders.reduce((s, o) => s + o.quantity, 0);
+  const frozen = qty * unitCost;
   return (
-    <div className="flex flex-col items-center justify-center xl:w-16 flex-shrink-0 gap-1">
+    <div className="flex flex-col items-center justify-center xl:w-20 flex-shrink-0 gap-1">
       <div className="hidden xl:flex flex-col items-center gap-1">
         <div className="w-px h-4 bg-border" />
         <div className="bg-secondary rounded-md px-1.5 py-1 text-center">
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground block">{label}</span>
           <span className="text-xs font-mono font-bold text-foreground tabular-nums">{wipOrders.length}</span>
+          {qty > 0 && (
+            <span className="text-[8px] font-mono text-muted-foreground block whitespace-nowrap">{qty} ед · {formatMoney(frozen)}</span>
+          )}
         </div>
         <div className="w-px h-4 bg-border" />
         <ArrowRight className="w-3 h-3 text-muted-foreground" />
@@ -524,6 +594,7 @@ function WIPColumn({ label, orders: wipOrders, currentDay }: {
       <div className="xl:hidden flex items-center gap-1 py-1">
         <span className="text-[10px] text-muted-foreground">{label}:</span>
         <span className="text-xs font-mono font-bold text-foreground">{wipOrders.length}</span>
+        {qty > 0 && <span className="text-[9px] font-mono text-muted-foreground">({formatMoney(frozen)})</span>}
         <ArrowRight className="w-3 h-3 text-muted-foreground" />
       </div>
     </div>

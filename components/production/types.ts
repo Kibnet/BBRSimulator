@@ -67,6 +67,17 @@ export interface ProdStats {
   shippedOnTime: number;
   shippedLate: number;
   totalShipped: number;
+  /** Financial cumulative */
+  totalSpent: number;
+  totalEarned: number;
+  totalLateLoss: number;
+}
+
+/** Financial event for rolling window */
+export interface FinancialEvent {
+  hour: number;
+  spent: number;
+  earned: number;
 }
 
 /** Full simulation state */
@@ -81,6 +92,8 @@ export interface ProdSimState {
   stats: ProdStats;
   /** Drum machine schedule: machineId → next available day */
   drumSchedule: Record<string, number>;
+  /** Financial events for rolling window calculations */
+  financialEvents: FinancialEvent[];
 }
 
 /* ── Helpers ── */
@@ -128,6 +141,17 @@ export const ZONE_COLORS: Record<BufferZone, string> = {
   red: 'hsl(0 72% 51%)',
   black: 'hsl(0 0% 30%)',
 };
+
+/** Format money as ₽ with thousands separators */
+export function formatMoney(amount: number): string {
+  if (Math.abs(amount) >= 1_000_000) {
+    return `${(amount / 1_000_000).toFixed(1)}М₽`;
+  }
+  if (Math.abs(amount) >= 10_000) {
+    return `${(amount / 1_000).toFixed(0)}К₽`;
+  }
+  return `${amount.toLocaleString('ru-RU')}₽`;
+}
 
 export const ZONE_BG: Record<BufferZone, string> = {
   green: 'hsl(142 71% 45% / 0.15)',
@@ -212,6 +236,10 @@ export interface ProdConfig {
   ropeWIPLimit: number;
   /** Dynamic due dates: set shipping date based on current buffer load */
   dynamicDueDates: boolean;
+  /** Cost of raw material per unit (₽) */
+  unitCostRaw: number;
+  /** Selling price per finished unit (₽) */
+  unitPriceSell: number;
 }
 
 export const DEFAULT_PROD_CONFIG: ProdConfig = {
@@ -250,6 +278,8 @@ export const DEFAULT_PROD_CONFIG: ProdConfig = {
   ropeEnabled: false,
   ropeWIPLimit: 4,
   dynamicDueDates: false,
+  unitCostRaw: 100,
+  unitPriceSell: 300,
 };
 
 /** Build Machine[] from ProdConfig */
@@ -321,6 +351,8 @@ export const PROD_PROFILES: ProdProfile[] = [
       ropeEnabled: false,
       ropeWIPLimit: 4,
       dynamicDueDates: false,
+      unitCostRaw: 100,
+      unitPriceSell: 300,
     },
   },
   {
@@ -333,6 +365,8 @@ export const PROD_PROFILES: ProdProfile[] = [
       ropeEnabled: false,
       ropeWIPLimit: 5,
       dynamicDueDates: false,
+      unitCostRaw: 100,
+      unitPriceSell: 300,
     },
   },
   {
@@ -345,6 +379,8 @@ export const PROD_PROFILES: ProdProfile[] = [
       ropeEnabled: true,
       ropeWIPLimit: 3,
       dynamicDueDates: false,
+      unitCostRaw: 100,
+      unitPriceSell: 300,
     },
   },
 ];

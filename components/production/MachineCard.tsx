@@ -43,10 +43,12 @@ export function MachineCard({ machine, order, currentDay, onCapacityChange }: Ma
   return (
     <div
       className={`rounded-lg border p-2.5 transition-all duration-300 min-h-[72px] ${
-        isIdle ? 'border-border bg-secondary/30' : ''
+        isIdle ? 'border-border/60 bg-muted/20' : ''
       }`}
       style={
-        !isIdle && zone
+        isIdle
+          ? { borderColor: 'hsl(var(--border) / 0.4)', background: 'hsl(var(--muted) / 0.08)' }
+          : zone
           ? {
               borderColor: ZONE_BORDER[zone],
               background: ZONE_BG[zone],
