@@ -259,7 +259,7 @@ export function useProductionSim() {
             continue; // skip default assignment for Op1
           } else {
             const wipBeforeDrum = orders.filter(
-              (o) => o.status === 'op1' || o.status === 'wip1'
+              (o) => ['queued', 'op1', 'wip1'].includes(o.status)
             ).length;
             if (wipBeforeDrum >= cfg.ropeWIPLimit) {
               continue;
