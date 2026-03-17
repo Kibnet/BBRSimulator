@@ -325,6 +325,8 @@ export interface ProdConfig {
   processingVariability: number;
   /** Machine availability percentage (0.8 to 1.0, where 1.0 = 100% uptime) */
   machineAvailability: number;
+  /** Demand variability (0 = none, 0.5 = 50% std dev applied to order generation rate) */
+  demandVariability: number;
 }
 
 export const DEFAULT_PROD_CONFIG: ProdConfig = {
@@ -367,6 +369,7 @@ export const DEFAULT_PROD_CONFIG: ProdConfig = {
   unitPriceSell: 300,
   processingVariability: 0,
   machineAvailability: 1.0,
+  demandVariability: 0,
 };
 
 /** Build Machine[] from ProdConfig */
@@ -444,6 +447,7 @@ export const PROD_PROFILES: ProdProfile[] = [
       unitPriceSell: 300,
       processingVariability: 0,
       machineAvailability: 1.0,
+      demandVariability: 0,
     },
   },
   {
@@ -460,6 +464,7 @@ export const PROD_PROFILES: ProdProfile[] = [
       unitPriceSell: 300,
       processingVariability: 0,
       machineAvailability: 1.0,
+      demandVariability: 0,
     },
   },
   {
@@ -476,6 +481,7 @@ export const PROD_PROFILES: ProdProfile[] = [
       unitPriceSell: 300,
       processingVariability: 0,
       machineAvailability: 1.0,
+      demandVariability: 0,
     },
   },
 ];

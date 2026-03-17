@@ -118,8 +118,18 @@ export function useProductionSim() {
       /* ── Step 1: Generate new customer orders ── */
       const cfg = configRef.current;
       const og = cfg.orderGen;
-      // Convert ordersPerDay to ordersPerHour
-      const ordersPerHour = og.ordersPerDay / HOURS_PER_DAY;
+      // Convert ordersPerDay to ordersPerHour, with optional demand variability
+      let ordersPerHour = og.ordersPerDay / HOURS_PER_DAY;
+      
+      // Apply Gaussian noise to order rate when demandVariability > 0
+      if (cfg.demandVariability > 0) {
+        const u1 = Math.random();
+        const u2 = Math.random();
+        const gaussian = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        const effectiveRate = og.ordersPerDay * (1 + cfg.demandVariability * gaussian);
+        ordersPerHour = Math.max(0, effectiveRate) / HOURS_PER_DAY;
+      }
+      
       let newOrderCount = Math.floor(ordersPerHour);
       if (Math.random() < (ordersPerHour - newOrderCount)) newOrderCount++;
 
