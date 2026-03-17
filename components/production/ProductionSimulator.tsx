@@ -393,8 +393,20 @@ export function ProductionSimulator() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                <StatRow label="Выручка (всего)" value={formatMoney(stats.totalEarned)} primary={stats.totalEarned > 0} />
                 <StatRow label="Потрачено (всего)" value={formatMoney(stats.totalSpent)} danger />
-                <StatRow label="Заработано (всего)" value={formatMoney(stats.totalEarned)} primary={stats.totalEarned > 0} />
+                <StatRow label="Штрафы за опоздание" value={formatMoney(stats.totalLateLoss)} danger={stats.totalLateLoss > 0} />
+                {(() => {
+                  const netProfit = stats.totalEarned - stats.totalLateLoss - stats.totalSpent;
+                  return (
+                    <StatRow
+                      label="Чистая прибыль"
+                      value={formatMoney(netProfit)}
+                      primary={netProfit > 0}
+                      danger={netProfit < 0}
+                    />
+                  );
+                })()}
                 <div className="border-t border-border my-1" />
                 <StatRow label="Потрачено (30д)" value={formatMoney(last30Spent)} danger />
                 <StatRow label="Заработано (30д)" value={formatMoney(last30NetEarned)} primary={last30NetEarned > 0} />
@@ -405,7 +417,6 @@ export function ProductionSimulator() {
                   danger={profitRatePerDay !== null && profitRatePerDay < 0}
                 />
                 <div className="border-t border-border my-1" />
-                <StatRow label="Штрафы за опоздание" value={formatMoney(stats.totalLateLoss)} danger={stats.totalLateLoss > 0} />
                 <StatRow label="Заморожено в НЗП" value={formatMoney(wipFrozen)} highlight />
               </CardContent>
             </Card>
