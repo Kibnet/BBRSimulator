@@ -2,8 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'export',
-  basePath: process.env.GITHUB_ACTIONS ? '/BBRSilulator' : '',
-  assetPrefix: process.env.GITHUB_ACTIONS ? '/BBRSilulator/' : '',
+  basePath: process.env.GITHUB_ACTIONS ? '/DBRSimulator' : '',
+  assetPrefix: process.env.GITHUB_ACTIONS ? '/DBRSimulator/' : '',
   images: {
     unoptimized: true,
   },
