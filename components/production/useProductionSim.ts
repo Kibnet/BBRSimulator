@@ -135,20 +135,18 @@ export function useProductionSim() {
           drumSchedule[bestMachineId] = drumSlotStart + drumProcHours;
           plannedDrumMachineId = bestMachineId;
 
-          // Average capacities for time estimates
-          const op1Capacity = machines.filter((m) => m.operationId === 1).reduce((s, m) => s + m.capacity, 0) || 1;
-          const op3Capacity = machines.filter((m) => m.operationId === 3).reduce((s, m) => s + m.capacity, 0) || 1;
-          const op1MachineCount = machines.filter((m) => m.operationId === 1).length || 1;
-          const op3MachineCount = machines.filter((m) => m.operationId === 3).length || 1;
-          const avgOp1Time = Math.ceil((qty * HOURS_PER_DAY) / (op1Capacity / op1MachineCount));
+          // Total capacities for time estimates (sum of all machines for each operation)
+          const op1TotalCapacity = machines.filter((m) => m.operationId === 1).reduce((s, m) => s + m.capacity, 0) || 1;
+          const op3TotalCapacity = machines.filter((m) => m.operationId === 3).reduce((s, m) => s + m.capacity, 0) || 1;
+          const totalOp1Time = Math.ceil((qty * HOURS_PER_DAY) / op1TotalCapacity);
           const avgOp2Time = drumProcHours;
-          const avgOp3Time = Math.ceil((qty * HOURS_PER_DAY) / (op3Capacity / op3MachineCount));
+          const totalOp3Time = Math.ceil((qty * HOURS_PER_DAY) / op3TotalCapacity);
 
-          // dueDay = drumSlotStart + (avgOp2Time + avgOp3Time) × 3
-          bufferHours = (drumSlotStart - newHour) + (avgOp2Time + avgOp3Time) * 3;
+          // dueDay = drumSlotStart + (avgOp2Time + totalOp3Time) × 3
+          bufferHours = (drumSlotStart - newHour) + (avgOp2Time + totalOp3Time) * 3;
 
-          // releaseDay = drumSlotStart - avgOp1Time × 3
-          releaseDay = Math.max(newHour, drumSlotStart - avgOp1Time * 3);
+          // releaseDay = drumSlotStart - totalOp1Time × 3
+          releaseDay = Math.max(newHour, drumSlotStart - totalOp1Time * 3);
         } else {
           // Config bufferMin/Max are in days → convert to hours
           bufferHours = randInt(og.bufferMin, og.bufferMax) * HOURS_PER_DAY;
