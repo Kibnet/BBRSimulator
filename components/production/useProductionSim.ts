@@ -234,6 +234,19 @@ export function useProductionSim() {
 
         // ── Rope: if enabled and dynamic dates, use releaseDay; otherwise use WIP limit ──
         if (opId === 1 && cfg.ropeEnabled) {
+          // ── Starvation protection: limit buffer between Op1 and Op2 (drum) ──
+          // Check WIP waiting before drum (orders completed Op1, waiting for Op2)
+          const wip1Count = orders.filter((o) => o.status === 'wip1').length;
+          if (wip1Count >= cfg.ropeWIPLimit) {
+            newLog.push({
+              id: `log-${++_logId}`,
+              day: newHour,
+              message: `🛑 Защита от перегрузки барабана: буфер п/ф 1 переполнен (${wip1Count}/${cfg.ropeWIPLimit})`,
+              type: 'warning',
+            });
+            continue; // Skip assigning new orders to Op1 to prevent overfeeding the drum
+          }
+
           if (cfg.dynamicDueDates) {
             // Rope by releaseDay: only release orders whose releaseDay <= current hour
             const waiting = orders
