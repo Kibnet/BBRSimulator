@@ -37,6 +37,10 @@ export interface CustomerOrder {
   plannedDrumMachineId: string | null;
   /** Day when order should be released to Op1 (rope) */
   releaseDay: number;
+  /** Hour when order enters Op2 (drum) — for segmented buffer tracking */
+  drumEntryDay?: number;
+  /** Hour when order exits Op2 (drum) — for segmented buffer tracking */
+  drumExitDay?: number;
 }
 
 /** A machine (equipment unit) in a production operation */
@@ -112,6 +116,79 @@ export function getBufferPenetration(order: CustomerOrder, currentDay: number): 
   if (order.bufferHours <= 0) return 100;
   const consumed = currentDay - order.createdDay;
   return Math.min(100, Math.max(0, (consumed / order.bufferHours) * 100));
+}
+
+/** Segmented buffer penetration breakdown */
+export interface SegmentedBufferPenetration {
+  /** % of rope buffer consumed: time from release to drum entry */
+  rope: number;
+  /** % of drum buffer consumed: time at drum (Op2) */
+  drum: number;
+  /** % of shipping buffer consumed: time from drum exit to current/due */
+  shipping: number;
+  /** Total buffer penetration (existing calculation) */
+  total: number;
+}
+
+/**
+ * Calculate segmented buffer penetration for diagnosing order delays.
+ * Segments the total buffer into rope/drum/shipping to identify bottleneck causes.
+ */
+export function getSegmentedBufferPenetration(
+  order: CustomerOrder,
+  currentHour: number
+): SegmentedBufferPenetration {
+  const total = getBufferPenetration(order, currentHour);
+  
+  // Calculate total buffer window
+  const bufferStart = order.releaseDay > 0 ? order.releaseDay : order.createdDay;
+  const totalBuffer = order.dueDay - bufferStart;
+  
+  if (totalBuffer <= 0) {
+    return { rope: 100, drum: 100, shipping: 100, total: 100 };
+  }
+  
+  // Estimate planned time for each segment (proportional split: 33% each as baseline)
+  // This can be refined if actual processing estimates are stored
+  const plannedRopeTime = totalBuffer / 3;
+  const plannedDrumTime = totalBuffer / 3;
+  const plannedShippingTime = totalBuffer / 3;
+  
+  let rope = 0;
+  let drum = 0;
+  let shipping = 0;
+  
+  // Calculate rope segment (release → drum entry)
+  if (order.drumEntryDay !== undefined) {
+    // Order has entered drum — rope segment is complete
+    const ropeActual = order.drumEntryDay - bufferStart;
+    rope = Math.min(100, Math.max(0, (ropeActual / plannedRopeTime) * 100));
+  } else if (currentHour > bufferStart) {
+    // Order hasn't reached drum yet — show current consumption
+    const ropeActual = currentHour - bufferStart;
+    rope = Math.min(100, Math.max(0, (ropeActual / plannedRopeTime) * 100));
+  }
+  
+  // Calculate drum segment (drum entry → drum exit)
+  if (order.drumEntryDay !== undefined) {
+    if (order.drumExitDay !== undefined) {
+      // Order has exited drum — drum segment is complete
+      const drumActual = order.drumExitDay - order.drumEntryDay;
+      drum = Math.min(100, Math.max(0, (drumActual / plannedDrumTime) * 100));
+    } else {
+      // Order is still at drum — show current consumption
+      const drumActual = currentHour - order.drumEntryDay;
+      drum = Math.min(100, Math.max(0, (drumActual / plannedDrumTime) * 100));
+    }
+  }
+  
+  // Calculate shipping segment (drum exit → due/current)
+  if (order.drumExitDay !== undefined) {
+    const shippingActual = currentHour - order.drumExitDay;
+    shipping = Math.min(100, Math.max(0, (shippingActual / plannedShippingTime) * 100));
+  }
+  
+  return { rope, drum, shipping, total };
 }
 
 /** Get zone from buffer penetration % */

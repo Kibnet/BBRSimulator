@@ -199,6 +199,12 @@ export function useProductionSim() {
           // Operation complete — move to next stage
           const completedOp = statusToOp(order.status);
           const newStatus = nextStatus(order.status);
+          
+          // Record drum exit time when leaving Op2
+          if (order.status === 'op2' && newStatus === 'wip2') {
+            order.drumExitDay = newHour;
+          }
+          
           order.status = newStatus;
           order.machineId = null;
           machine.currentOrderId = null;
@@ -296,6 +302,11 @@ export function useProductionSim() {
           order.processingRemaining = procHours;
           order.processingTotal = procHours;
           machine.currentOrderId = order.id;
+          
+          // Record drum entry time when starting Op2
+          if (opId === 2) {
+            order.drumEntryDay = newHour;
+          }
 
           newLog.push({
             id: `log-${++_logId}`,

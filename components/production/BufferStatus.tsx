@@ -1,7 +1,7 @@
 'use client';
 
-import type { CustomerOrder } from './types';
-import { getOrderZone, getBufferPenetration, ZONE_COLORS } from './types';
+import type { CustomerOrder, SegmentedBufferPenetration } from './types';
+import { getOrderZone, getBufferPenetration, getSegmentedBufferPenetration, ZONE_COLORS } from './types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield } from 'lucide-react';
 
@@ -31,6 +31,29 @@ export function BufferStatus({ orders, currentDay }: BufferStatusProps) {
   const avgPenetration = active.length > 0
     ? active.reduce((sum, o) => sum + getBufferPenetration(o, currentDay), 0) / active.length
     : 0;
+
+  // Average segmented buffer penetration
+  const avgSegmented: SegmentedBufferPenetration = active.length > 0
+    ? active.reduce(
+        (acc, o) => {
+          const seg = getSegmentedBufferPenetration(o, currentDay);
+          return {
+            rope: acc.rope + seg.rope,
+            drum: acc.drum + seg.drum,
+            shipping: acc.shipping + seg.shipping,
+            total: acc.total + seg.total,
+          };
+        },
+        { rope: 0, drum: 0, shipping: 0, total: 0 }
+      )
+    : { rope: 0, drum: 0, shipping: 0, total: 0 };
+  
+  if (active.length > 0) {
+    avgSegmented.rope /= active.length;
+    avgSegmented.drum /= active.length;
+    avgSegmented.shipping /= active.length;
+    avgSegmented.total /= active.length;
+  }
 
   // Buffer health: % of orders still in green zone
   const healthPct = active.length > 0 ? (zones.green / active.length) * 100 : 100;
@@ -134,6 +157,16 @@ export function BufferStatus({ orders, currentDay }: BufferStatusProps) {
           </div>
         </div>
 
+        {/* Segmented buffer penetration (Rope / Drum / Shipping) */}
+        <div>
+          <div className="text-[10px] text-muted-foreground mb-1">Сегменты буфера</div>
+          <div className="space-y-1">
+            <SegmentBar label="Канат" value={avgSegmented.rope} color="hsl(210 80% 55%)" />
+            <SegmentBar label="Барабан" value={avgSegmented.drum} color="hsl(280 70% 55%)" />
+            <SegmentBar label="Отгрузка" value={avgSegmented.shipping} color="hsl(30 90% 50%)" />
+          </div>
+        </div>
+
         {/* Buffer health */}
         <div className="flex items-center justify-between pt-1 border-t border-border">
           <span className="text-[10px] text-muted-foreground">Здоровье буфера</span>
@@ -162,6 +195,33 @@ function ZoneCount({ color, label, count }: { color: string; label: string; coun
       <span className="text-[9px] text-muted-foreground">{label}</span>
       <span className="text-[10px] font-mono font-bold tabular-nums" style={{ color }}>
         {count}
+      </span>
+    </div>
+  );
+}
+
+function SegmentBar({ label, value, color }: { label: string; value: number; color: string }) {
+  const clampedValue = Math.min(100, Math.max(0, value));
+  const zoneColor =
+    clampedValue >= 67 ? ZONE_COLORS.red : clampedValue >= 33 ? ZONE_COLORS.yellow : ZONE_COLORS.green;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[9px] text-muted-foreground w-14 truncate">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-muted relative">
+        <div
+          className="absolute top-0 left-0 h-full rounded-full transition-all duration-500"
+          style={{
+            width: `${clampedValue}%`,
+            background: zoneColor,
+          }}
+        />
+        {/* Zone markers */}
+        <div className="absolute top-0 bottom-0 w-px bg-border/50" style={{ left: '33.3%' }} />
+        <div className="absolute top-0 bottom-0 w-px bg-border/50" style={{ left: '66.6%' }} />
+      </div>
+      <span className="text-[9px] font-mono tabular-nums w-8 text-right" style={{ color: zoneColor }}>
+        {Math.round(clampedValue)}%
       </span>
     </div>
   );
