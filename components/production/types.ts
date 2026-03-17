@@ -317,6 +317,8 @@ export interface ProdConfig {
   unitCostRaw: number;
   /** Selling price per finished unit (₽) */
   unitPriceSell: number;
+  /** Processing time variability (0 = none, 0.3 = 30% std dev) */
+  processingVariability: number;
 }
 
 export const DEFAULT_PROD_CONFIG: ProdConfig = {
@@ -357,6 +359,7 @@ export const DEFAULT_PROD_CONFIG: ProdConfig = {
   dynamicDueDates: false,
   unitCostRaw: 100,
   unitPriceSell: 300,
+  processingVariability: 0,
 };
 
 /** Build Machine[] from ProdConfig */
@@ -430,6 +433,7 @@ export const PROD_PROFILES: ProdProfile[] = [
       dynamicDueDates: false,
       unitCostRaw: 100,
       unitPriceSell: 300,
+      processingVariability: 0,
     },
   },
   {
@@ -444,6 +448,7 @@ export const PROD_PROFILES: ProdProfile[] = [
       dynamicDueDates: false,
       unitCostRaw: 100,
       unitPriceSell: 300,
+      processingVariability: 0,
     },
   },
   {
@@ -458,6 +463,7 @@ export const PROD_PROFILES: ProdProfile[] = [
       dynamicDueDates: false,
       unitCostRaw: 100,
       unitPriceSell: 300,
+      processingVariability: 0,
     },
   },
 ];

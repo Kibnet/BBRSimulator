@@ -58,6 +58,23 @@ function processingHours(qty: number, capacityPerDay: number): number {
   return Math.max(1, Math.ceil((qty * HOURS_PER_DAY) / capacityPerDay));
 }
 
+/**
+ * Processing hours with Gaussian variability (for actual production only).
+ * Uses Box-Muller transform for Gaussian random number.
+ */
+function processingHoursWithVariability(qty: number, capacityPerDay: number, variability: number): number {
+  const baseHours = (qty * HOURS_PER_DAY) / capacityPerDay;
+  if (variability <= 0) {
+    return Math.max(1, Math.ceil(baseHours));
+  }
+  // Box-Muller transform for Gaussian random
+  const u1 = Math.random();
+  const u2 = Math.random();
+  const gaussian = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  const variance = baseHours * variability * gaussian;
+  return Math.max(1, Math.ceil(baseHours + variance));
+}
+
 /* ── Initial state ── */
 function createInitialState(config: ProdConfig): ProdSimState {
   const machines = buildMachinesFromConfig(config);
@@ -260,7 +277,7 @@ export function useProductionSim() {
             for (const machine of opMachines) {
               const order = waiting.shift();
               if (!order) break;
-              const procHours = processingHours(order.quantity, machine.capacity);
+              const procHours = processingHoursWithVariability(order.quantity, machine.capacity, cfg.processingVariability);
               order.status = 'op1';
               order.machineId = machine.id;
               order.processingRemaining = procHours;
@@ -293,8 +310,8 @@ export function useProductionSim() {
           const order = waiting.shift();
           if (!order) break;
 
-          // Calculate processing time in hours
-          const procHours = processingHours(order.quantity, machine.capacity);
+          // Calculate processing time in hours (with variability for actual production)
+          const procHours = processingHoursWithVariability(order.quantity, machine.capacity, cfg.processingVariability);
           order.status = `op${opId}` as CustomerOrder['status'];
           order.machineId = machine.id;
           order.processingRemaining = procHours;
